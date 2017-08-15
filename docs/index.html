@@ -1,0 +1,222 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HEAD>
+<TITLE>Real-time UDP data mixer</TITLE>
+<META name="generator" content="NoteTab 4.6a">
+<META NAME="keywords" CONTENT="real-time data mixer packets UDP">
+</HEAD>
+
+<BODY TEXT="#000000" BGCOLOR="#CCCCCC" LINK="#0000CC" VLINK="#660066"
+ALINK="#660066">
+
+<H1 ALIGN=CENTER>UDP Data Mixer</H1>
+<H2>Preface</H2>
+<P>This page is a quick write-up on a data mixing project done as a class
+project.  This page was written several months after the project to help
+anybody that stumbles upon it.  If you need more information or clarification,
+I will be glad to discuss it with you.</P>
+
+<H2>Purpose</H2>
+<P>This project was written in the latter half of a 10 week course on
+computer networks.  The goal of the project is to demonstrate some of the
+techniques that may be used in real-time mixing of UDP data over the current IP
+network.  It also sheds some light on areas that require advance consideration
+before a given data mixing service is implemented.  Such areas include:</P>
+
+<UL>
+<LI>mixing method</LI>
+<LI>mixing rate</LI>
+<LI>packet ordering</LI>
+<LI>lost packet handling</LI>
+<LI>joining mixing group</LI>
+<LI>leaving mixing group</LI>
+<LI>mixer resource allocation</LI>
+</UL>
+
+<P>Though the work done for this project has no practical use in it's
+current form, it serves as a guide for future developers to services such as:
+</P>
+
+<UL>
+<LI>IP call conferencing</LI>
+<LI>video whiteboarding</LI>
+<LI>multi-sensor integration</LI>
+<LI>IP symphony</LI>
+<LI>joining mixing group</LI>
+<LI>leaving mixing group</LI>
+<LI>mixer resource allocation</LI>
+</UL>
+
+<P>For this project, a finite number of clients in a mixing group will send
+their data to a mixing proxy.  The data sent shall be a compressed M&times;N
+grid of ones (1) and zeros (0).  The role of the proxy is to mix the data from
+all the clients and display the results.</P>
+
+<H2>Design</H2>
+<P>There are two main components to this project, the client and the proxy.
+The client serves as a data transmitter and the proxy receives and mixes the
+data.  For each group there may only one mixer and up to 35 clients.  The limit
+on the number of clients is because of the mixing technique (
+<A HREF="#mixing">see below</A>), it is not a network limitation.</P>
+
+<A NAME="client"></A><H3>Client</H3>
+<P>The client for the real-time data encoding and mixing project generates a
+random cell grid of ones (1) and zeros (0) in a M&times;N grid (M and N need
+not be the same for each client).</P>
+
+<P>The client is initialized with the dimensions of its grid, and the address
+and port of the <A HREF="#proxy">proxy</A> which handles its mixing group.<SUP>
+<A HREF="#footnote1">1</A>,<A HREF="#footnote2">2</A></SUP> Then an initial
+request to join the group is issued to the proxy.</P>
+
+<P>After the client joins the group, the first grid is then randomly generated
+and packed into an array of bits.  The array is transmitted to the proxy using
+the UDP &quot;connection&quot; which was established at the beginning of the
+session.  For verification purposes the curses library is used to display a
+copy of the grid on the screen.  A side effect of this is that grid size is
+limited by screen dimensions.</P>
+
+<P>An alarm is triggered every frame to cause a random &quot;mutation&quot; of
+old grid cells and the transmission of the newly mutated grid.  The frame time
+is two seconds, a compile time constant which allowed me enough time to
+visually verify correctness.</P>
+
+<P>To allow for a controlled simulation of network conditions (and a natural
+exit), the proxy will scan the client keyboard and respond to the following
+commands:</P>
+
+<TABLE ALIGN="Center" BORDER="0" CELLSPACING="1" CELLPADDING="1" WIDTH="100%">
+<TR ALIGN="left" VALIGN="top">
+<TD ALIGN="left" VALIGN="top" >Q&nbsp;&nbsp;</TD>
+<TD ALIGN="left" VALIGN="top" >Quit</TD>
+</TR>
+
+<TR ALIGN="left" VALIGN="top">
+<TD ALIGN="left" VALIGN="top" >D&nbsp;&nbsp;</TD>
+<TD ALIGN="left" VALIGN="top" >Drop a packet. Skip a sequence number, and don't
+transmit this frame.</TD>
+</TR>
+
+<TR ALIGN="left" VALIGN="top">
+<TD ALIGN="left" VALIGN="top" >S&nbsp;&nbsp;</TD>
+<TD ALIGN="left" VALIGN="top" >Skip a packet. Skip a sequence number, and
+transmit this frame.</TD>
+</TR>
+
+<TR ALIGN="left" VALIGN="top">
+<TD ALIGN="left" VALIGN="top" >R&nbsp;&nbsp;</TD>
+<TD ALIGN="left" VALIGN="top" >Reverse sequence numbers.  Transmit next frame's
+number, this frame and this frame's number, the next frame.</TD>
+</TR>
+
+</TABLE>
+
+<A NAME="proxy"></A><H3>Proxy</H3>
+<P>The proxy for the real-time data encoding and mixing project. It mixes grids
+of random cells of ones (1) and zeros (0) transmitted by its clients.</P>
+
+<P>When a client joins the group, a storage array for that client's latest data
+is added to a collection of client data.</P>
+
+<P>An alarm is triggered every frame which causes the proxy to mix data
+according to its <A HREF="#mixing">mixing</A> algorithm.  The frame time is two
+seconds, a compile time constant which allowed me enough time to visually
+verify correctness.</P>
+
+<H4>Receiving Packets</H4>
+<P>When the proxy receives a client's packet, it compares the sequence number
+of the new packet with the sequence number of the last packet accepted from
+the client.  If the sequence number is greater than the last accepted sequence
+number, the proxy will do the following:</P>
+<UL>
+<LI>Unpack the packet into floating point values</LI>
+<LI>Store the data and it's sequence number</LI>
+<LI>Marks the data as current for this frame</LI>
+</UL>
+<P>The data is stored as a floating point value so that lost packets may be
+handled in a semi-graceful manner. <A HREF="#lost">(see below)</A></P>
+
+<A NAME="mixing"></A><H4>Mixing</H4>
+<P>Once every two seconds a frame is mixed. All updated data is added together
+and any data not updated this frame is approximated <A HREF="#lost">(see
+below)</A>.  Any non-integer cells are rounded to the nearest integer value.
+Finally the results of the mixed grids are displayed on the proxy's terminal.
+I know that the mixing is not so difficult, but any algorithm could be use
+here.  It wasn't the point of the program.</P>
+
+<A NAME="lost"></A><H4>Lost Packets</H4>
+<P>During the mixing, if any client's data is not marked current for this
+frame, it is considered to have a lost packet.  The current algorithm for handling the lost packets is to halve the value of the each cell in the previously received packet and treat the halved values as current.</P>
+
+<H2>Source</H2>
+
+<TABLE ALIGN="Center" BORDER="0" CELLSPACING="1" CELLPADDING="1" WIDTH="100%">
+<TR>
+<TD ALIGN="left" VALIGN="top">
+Makefile&nbsp;&nbsp;
+</TD>
+<TD ALIGN="left" VALIGN="top">
+Makefile for this project
+</TD>
+</TR>
+
+<TR>
+<TD ALIGN="left" VALIGN="top">
+client.c
+</TD>
+<TD ALIGN="left" VALIGN="top">
+Mixer client
+</TD>
+</TR>
+
+<TR ALIGN="left" VALIGN="top">
+<TD ALIGN="left" VALIGN="top">
+proxy.c
+</TD>
+<TD ALIGN="left" VALIGN="top">
+Mixer proxy
+</TD>
+</TR>
+
+<TR>
+<TD ALIGN="left" VALIGN="top">
+utils.c
+</TD>
+<TD ALIGN="left" VALIGN="top">
+Utility routines and used by both the client and the proxy.<BR>
+</TD>
+</TR>
+
+<TR>
+<TD ALIGN="left" VALIGN="top">
+utils.h
+</TD>
+<TD ALIGN="left" VALIGN="top">
+Data type, constants, and prototypes to utility routines and used by both the
+client and the proxy.
+</TD>
+</TR>
+</TABLE>
+
+<H2>Future Work</H2>
+<P>Given time, the following items might be worth adding to this project:</P>
+<UL>
+<LI>multicast of mixed results from proxy</LI>
+<LI>authentication of members of mixing group</LI>
+<LI>meaningful data (I'd like to try voice data)</LI>
+<LI>improved handling of packet loss</LI>
+</UL>
+
+<HR WIDTH="100%">
+
+<P>
+<A NAME="footnote1"></A>1. In order for a session to be established, the proxy
+must be initialized prior to the client.<BR>
+<A NAME="footnote2"></A>2. Only one client per proxy may exist at any IP
+address at a time.<BR>
+</P>
+
+<P><A HREF="home.html">Home</A><BR>
+Last updated on <I>November 2, 2000</I></P>
+
+</BODY>
+</HTML>
